@@ -6,8 +6,8 @@ import (
 	"github.com/marcinbor85/gohex"
 )
 
-// PIC8 is a programmer for 8-bit PICs.
-type PIC8 struct {
+// PIC8Programmer is a programmer for 8-bit PICs.
+type PIC8Programmer struct {
 	bootloader Bootloader
 	memory     *gohex.Memory
 	profile    PIC8Profile
@@ -41,7 +41,7 @@ type PIC8Options struct {
 
 // NewPIC8Programmer creates a new programmer for 8-bit PICs.
 func NewPIC8Programmer(bootloader Bootloader, profile PIC8Profile, options PIC8Options) Programmer {
-	prog := new(PIC8)
+	prog := new(PIC8Programmer)
 
 	prog.bootloader = bootloader
 	prog.profile = profile
@@ -51,7 +51,7 @@ func NewPIC8Programmer(bootloader Bootloader, profile PIC8Profile, options PIC8O
 }
 
 // LoadHexFile loads and parses the specified hex file.
-func (p *PIC8) LoadHexFile(fileName string) error {
+func (p *PIC8Programmer) LoadHexFile(fileName string) error {
 	var err error
 	p.memory, err = loadHexFile(fileName)
 	if err != nil {
@@ -96,7 +96,7 @@ func (p *PIC8) LoadHexFile(fileName string) error {
 }
 
 // Connect establishes a connection with the PIC and gets the device info.
-func (p *PIC8) Connect() error {
+func (p *PIC8Programmer) Connect() error {
 	var err error
 	if err = p.bootloader.Connect(); err != nil {
 		return fmt.Errorf("failed to open bootloader: %v", err)
@@ -110,17 +110,17 @@ func (p *PIC8) Connect() error {
 }
 
 // Disconnect closes the connection with the PIC.
-func (p *PIC8) Disconnect() {
+func (p *PIC8Programmer) Disconnect() {
 	p.bootloader.Disconnect()
 }
 
 // GetVersionInfo returns the current device info.
-func (p *PIC8) GetVersionInfo() VersionInfo {
+func (p *PIC8Programmer) GetVersionInfo() VersionInfo {
 	return p.info
 }
 
 // Program erases and writes the program data previously loaded with LoadHexFile.
-func (p *PIC8) Program() error {
+func (p *PIC8Programmer) Program() error {
 	// Erase flash
 	if err := eraseSegments(p.flash, p.info.EraseRowSize, p.bootloader.EraseFlash); err != nil {
 		return fmt.Errorf("failed to erase segment at %X: %v", err.(*progError).Address, err.(*progError).Err)
@@ -166,7 +166,7 @@ func (p *PIC8) Program() error {
 }
 
 // Verify reads back the program memory and compares it to the data in the hex file.
-func (p *PIC8) Verify() error {
+func (p *PIC8Programmer) Verify() error {
 	// Verify flash
 	err := verifySegments(p.flash, p.info.WriteRowSize, p.bootloader.ReadFlash)
 	if err != nil {
@@ -201,6 +201,6 @@ func (p *PIC8) Verify() error {
 }
 
 // Reset resets the PIC.
-func (p *PIC8) Reset() error {
+func (p *PIC8Programmer) Reset() error {
 	return p.bootloader.Reset()
 }
