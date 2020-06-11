@@ -6,8 +6,8 @@ import (
 	"github.com/marcinbor85/gohex"
 )
 
-// PIC8Programmer is a programmer for 8-bit PICs.
-type PIC8Programmer struct {
+// pic8Programmer is a programmer for 8-bit PICs.
+type pic8Programmer struct {
 	bootloader Bootloader
 	memory     *gohex.Memory
 	profile    PIC8Profile
@@ -37,11 +37,14 @@ type PIC8Options struct {
 	ProgramEEPROM bool
 	ProgramConfig bool
 	ProgramID     bool
+	// If true, then verification is done by reading back from flash memory.
+	// Otherwise, checksum is used.
+	VerifyByReading bool
 }
 
 // NewPIC8Programmer creates a new programmer for 8-bit PICs.
 func NewPIC8Programmer(bootloader Bootloader, profile PIC8Profile, options PIC8Options) Programmer {
-	prog := new(PIC8Programmer)
+	prog := new(pic8Programmer)
 
 	prog.bootloader = bootloader
 	prog.profile = profile
@@ -51,7 +54,7 @@ func NewPIC8Programmer(bootloader Bootloader, profile PIC8Profile, options PIC8O
 }
 
 // LoadHexFile loads and parses the specified hex file.
-func (p *PIC8Programmer) LoadHexFile(fileName string) error {
+func (p *pic8Programmer) LoadHexFile(fileName string) error {
 	var err error
 	p.memory, err = loadHexFile(fileName)
 	if err != nil {
@@ -69,10 +72,17 @@ func (p *PIC8Programmer) LoadHexFile(fileName string) error {
 	for _, segment := range p.memory.GetDataSegments() {
 		switch {
 		case validSegment(&segment, p.profile.BootloaderOffset, p.profile.FlashSize-p.profile.BootloaderOffset):
+			// Make sure the length is an even number
+			if len(segment.Data)&1 == 1 {
+				// Add an extra byte to pad the segment out
+				segment.Data = append(segment.Data, 0xFF)
+			}
 			p.flash = append(p.flash, segment)
+			pkgLog.Debugf("loaded flash segment at %X length %v", segment.Address, len(segment.Data))
 
 		case validSegment(&segment, p.profile.IDOffset, p.profile.IDSize):
 			p.id = append(p.id, segment)
+			pkgLog.Debugf("loaded id segment at %X length %v", segment.Address, len(segment.Data))
 
 		case validSegment(&segment, p.profile.ConfigOffset, p.profile.ConfigSize):
 			// Unused configuration bytes are saved as 0xFF in the hex file,
@@ -83,20 +93,21 @@ func (p *PIC8Programmer) LoadHexFile(fileName string) error {
 				}
 			}
 			p.config = append(p.config, segment)
+			pkgLog.Debugf("loaded config segment at %X length %v", segment.Address, len(segment.Data))
 
 		case validSegment(&segment, p.profile.EEPROMOffset, p.profile.EEPROMSize):
 			p.eeprom = append(p.eeprom, segment)
+			pkgLog.Debugf("loaded eeprom segment at %X length %v", segment.Address, len(segment.Data))
 
 		default:
 			return fmt.Errorf("invalid data segment at address %X", segment.Address)
 		}
-
 	}
 	return nil
 }
 
 // Connect establishes a connection with the PIC and gets the device info.
-func (p *PIC8Programmer) Connect() error {
+func (p *pic8Programmer) Connect() error {
 	var err error
 	if err = p.bootloader.Connect(); err != nil {
 		return fmt.Errorf("failed to open bootloader: %v", err)
@@ -110,17 +121,17 @@ func (p *PIC8Programmer) Connect() error {
 }
 
 // Disconnect closes the connection with the PIC.
-func (p *PIC8Programmer) Disconnect() {
+func (p *pic8Programmer) Disconnect() {
 	p.bootloader.Disconnect()
 }
 
 // GetVersionInfo returns the current device info.
-func (p *PIC8Programmer) GetVersionInfo() VersionInfo {
+func (p *pic8Programmer) GetVersionInfo() VersionInfo {
 	return p.info
 }
 
 // Program erases and writes the program data previously loaded with LoadHexFile.
-func (p *PIC8Programmer) Program() error {
+func (p *pic8Programmer) Program() error {
 	// Erase flash
 	if err := eraseSegments(p.flash, p.info.EraseRowSize, p.bootloader.EraseFlash); err != nil {
 		return fmt.Errorf("failed to erase segment at %X: %v", err.(*progError).Address, err.(*progError).Err)
@@ -128,13 +139,13 @@ func (p *PIC8Programmer) Program() error {
 
 	// Program flash
 	if err := writeSegments(p.flash, p.info.WriteRowSize, p.bootloader.WriteFlash); err != nil {
-		return fmt.Errorf("failed to write flash at address: %X: %v", err.(*progError).Address, err.(*progError).Err)
+		return fmt.Errorf("failed to write flash at address %X: %v", err.(*progError).Address, err.(*progError).Err)
 	}
 
 	// Program EEPROM
 	if p.options.ProgramEEPROM {
 		if err := writeSegments(p.eeprom, p.info.WriteRowSize, p.bootloader.WriteEE); err != nil {
-			return fmt.Errorf("failed to write eeprom at address: %X: %v", err.(*progError).Address, err.(*progError).Err)
+			return fmt.Errorf("failed to write eeprom at address %X: %v", err.(*progError).Address, err.(*progError).Err)
 		}
 	}
 
@@ -146,7 +157,7 @@ func (p *PIC8Programmer) Program() error {
 		// }
 		// Flash the new config
 		if err := writeSegments(p.config, p.info.WriteRowSize, p.bootloader.WriteConfig); err != nil {
-			return fmt.Errorf("failed to write config at address: %X: %v", err.(*progError).Address, err.(*progError).Err)
+			return fmt.Errorf("failed to write config at address %X: %v", err.(*progError).Address, err.(*progError).Err)
 		}
 	}
 
@@ -158,7 +169,7 @@ func (p *PIC8Programmer) Program() error {
 		}
 		// Flash the new ID data
 		if err := writeSegments(p.id, p.info.WriteRowSize, p.bootloader.WriteFlash); err != nil {
-			return fmt.Errorf("failed to write id at address: %X: %v", err.(*progError).Address, err.(*progError).Err)
+			return fmt.Errorf("failed to write id at address %X: %v", err.(*progError).Address, err.(*progError).Err)
 		}
 	}
 
@@ -166,16 +177,23 @@ func (p *PIC8Programmer) Program() error {
 }
 
 // Verify reads back the program memory and compares it to the data in the hex file.
-func (p *PIC8Programmer) Verify() error {
+func (p *pic8Programmer) Verify() error {
+	if p.options.VerifyByReading {
+		return p.verifyByReading()
+	}
+	return p.verifyByChecksum()
+}
+
+func (p *pic8Programmer) verifyByReading() error {
 	// Verify flash
-	err := verifySegments(p.flash, p.info.WriteRowSize, p.bootloader.ReadFlash)
+	err := verifySegmentsByReading(p.flash, p.info.WriteRowSize, p.bootloader.ReadFlash)
 	if err != nil {
 		return fmt.Errorf("failed to verify flash: %v", err)
 	}
 
 	// Verify EEPROM
 	if p.options.ProgramEEPROM {
-		err = verifySegments(p.eeprom, p.info.WriteRowSize, p.bootloader.ReadEE)
+		err = verifySegmentsByReading(p.eeprom, p.info.WriteRowSize, p.bootloader.ReadEE)
 		if err != nil {
 			return fmt.Errorf("failed to verify eeprom: %v", err)
 		}
@@ -183,7 +201,7 @@ func (p *PIC8Programmer) Verify() error {
 
 	// Verify config
 	if p.options.ProgramConfig {
-		err = verifySegments(p.config, p.info.WriteRowSize, p.bootloader.ReadConfig)
+		err = verifySegmentsByReading(p.config, p.info.WriteRowSize, p.bootloader.ReadConfig)
 		if err != nil {
 			return fmt.Errorf("failed to verify config: %v", err)
 		}
@@ -191,16 +209,25 @@ func (p *PIC8Programmer) Verify() error {
 
 	// Verify ID
 	if p.options.ProgramID {
-		err = verifySegments(p.id, p.info.WriteRowSize, p.bootloader.ReadFlash)
+		err = verifySegmentsByReading(p.id, p.info.WriteRowSize, p.bootloader.ReadFlash)
 		if err != nil {
-			return fmt.Errorf("failed to verify eeprom: %v", err)
+			return fmt.Errorf("failed to verify id: %v", err)
 		}
 	}
 
 	return nil
 }
 
+func (p *pic8Programmer) verifyByChecksum() error {
+	// Verify flash
+	err := verifySegmentsByChecksum(p.flash, p.bootloader.CalculateChecksum)
+	if err != nil {
+		return fmt.Errorf("failed to verify flash: %v", err)
+	}
+	return nil
+}
+
 // Reset resets the PIC.
-func (p *PIC8Programmer) Reset() error {
+func (p *pic8Programmer) Reset() error {
 	return p.bootloader.Reset()
 }

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os/exec"
 
 	"github.com/amrbekhit/microchipboot"
 	log "github.com/sirupsen/logrus"
@@ -29,9 +30,15 @@ type pic8ProfileOptions struct {
 	Options microchipboot.PIC8Options
 }
 
+const appVersion = "0.2.0"
+
 func main() {
+	version := flag.Bool("version", false, "Prints the program version.")
 	port := flag.String("port", "", "Serial port name.")
 	baud := flag.Int("baud", 115200, "Baud rate.")
+	verbose := flag.Bool("v", false, "Enable verbose logging.")
+	before := flag.String("before", "", "Command to run before programming.")
+	after := flag.String("after", "", "Command to run after programming has been completed successfully.")
 
 	// Format an empty pic8ProfileOptions struct in YAML format as an example.
 	buf := new(bytes.Buffer)
@@ -49,6 +56,17 @@ func main() {
 		cmdList))
 
 	flag.Parse()
+
+	if *version {
+		fmt.Println(appVersion)
+		return
+	}
+
+	if *verbose {
+		log.SetLevel(log.DebugLevel)
+	}
+
+	microchipboot.SetLogger(log.StandardLogger())
 
 	if *port == "" {
 		log.Fatal("must specify port")
@@ -91,6 +109,14 @@ func main() {
 			log.Fatalf("failed to parse profile file: %v", err)
 		}
 
+		// Run the before command
+		if *before != "" {
+			log.Infof("running before command...")
+			if err := exec.Command(*before).Run(); err != nil {
+				log.Fatalf("failed to run before command: %v", err)
+			}
+		}
+
 		prog := microchipboot.NewPIC8Programmer(bootloader, pic.Profile, pic.Options)
 		log.Infof("connecting to device...")
 		if err := prog.Connect(); err != nil {
@@ -119,5 +145,13 @@ func main() {
 			log.Fatal(err)
 		}
 		log.Infof("complete")
+
+		// Run the after command
+		if *after != "" {
+			log.Infof("running after command...")
+			if err := exec.Command(*after).Run(); err != nil {
+				log.Fatalf("failed to run after command: %v", err)
+			}
+		}
 	}
 }
