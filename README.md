@@ -40,6 +40,7 @@ options:
   programeeprom: true
   programconfig: false
   programid: false
+  verifybyreading: true
 ```
 
 To program a HEX file, run the following command:
