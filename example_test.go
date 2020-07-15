@@ -1,8 +1,8 @@
 package microchipboot
 
 import (
-	"flag"
 	"log"
+	"os"
 )
 
 func Example() {
@@ -19,31 +19,37 @@ func Example() {
 	// Create a programmer that uses the previously created bootloader
 	programmer := NewPIC8Programmer(bootloader, profile, options)
 
-	log.Printf("connecting to device...")
+	log.Print("connecting to device...")
 	if err := programmer.Connect(); err != nil {
 		log.Fatal(err)
 	}
 	defer programmer.Disconnect()
-	log.Printf("connected")
+	log.Print("connected")
 
-	if err := programmer.LoadHexFile(flag.Args()[0]); err != nil {
+	file, err := os.Open("firmware.hex")
+	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("hex file loaded")
+	defer file.Close()
 
-	log.Printf("programming...")
+	if err := programmer.LoadHex(file); err != nil {
+		log.Fatal(err)
+	}
+	log.Print("hex file loaded")
+
+	log.Print("programming...")
 	if err := programmer.Program(); err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("verifying...")
+	log.Print("verifying...")
 	if err := programmer.Verify(); err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("resetting...")
+	log.Print("resetting...")
 	if err := programmer.Reset(); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("complete")
+	log.Print("complete")
 }

@@ -2,6 +2,7 @@ package microchipboot
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/marcinbor85/gohex"
 )
@@ -53,10 +54,10 @@ func NewPIC8Programmer(bootloader Bootloader, profile PIC8Profile, options PIC8O
 	return prog
 }
 
-// LoadHexFile loads and parses the specified hex file.
-func (p *pic8Programmer) LoadHexFile(fileName string) error {
+// LoadHex loads and parses the specified hex data.
+func (p *pic8Programmer) LoadHex(data io.Reader) error {
 	var err error
-	p.memory, err = loadHexFile(fileName)
+	p.memory, err = loadHex(data)
 	if err != nil {
 		return err
 	}

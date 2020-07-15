@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 
 	"github.com/amrbekhit/microchipboot"
@@ -30,7 +31,7 @@ type pic8ProfileOptions struct {
 	Options microchipboot.PIC8Options
 }
 
-const appVersion = "0.2.0"
+const appVersion = "0.2.1"
 
 func main() {
 	version := flag.Bool("version", false, "Prints the program version.")
@@ -125,7 +126,13 @@ func main() {
 		defer prog.Disconnect()
 		log.Infof("connected")
 
-		if err := prog.LoadHexFile(flag.Args()[0]); err != nil {
+		file, err := os.Open(flag.Args()[0])
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+
+		if err := prog.LoadHex(file); err != nil {
 			log.Fatal(err)
 		}
 		log.Infof("hex file loaded")

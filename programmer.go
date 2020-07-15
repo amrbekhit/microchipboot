@@ -2,8 +2,8 @@ package microchipboot
 
 import (
 	"fmt"
+	"io"
 	"math"
-	"os"
 
 	"github.com/marcinbor85/gohex"
 )
@@ -13,21 +13,15 @@ type Programmer interface {
 	Connect() error
 	Disconnect()
 	GetVersionInfo() VersionInfo
-	LoadHexFile(file string) error
+	LoadHex(data io.Reader) error
 	Program() error
 	Verify() error
 	Reset() error
 }
 
-func loadHexFile(fileName string) (*gohex.Memory, error) {
-	file, err := os.Open(fileName)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
+func loadHex(data io.Reader) (*gohex.Memory, error) {
 	mem := gohex.NewMemory()
-	err = mem.ParseIntelHex(file)
+	err := mem.ParseIntelHex(data)
 	if err != nil {
 		return nil, err
 	}
