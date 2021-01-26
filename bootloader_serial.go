@@ -44,13 +44,14 @@ func (b *serialBootloader) Disconnect() {
 
 func (b *serialBootloader) recv(count int) ([]byte, error) {
 	resp := make([]byte, 0, count)
-	for len(resp) < cap(resp) {
-		buf := make([]byte, cap(resp))
+	for count > 0 {
+		buf := make([]byte, count)
 		n, err := b.port.Read(buf)
 		if err != nil {
 			return nil, err
 		}
 		resp = append(resp, buf[:n]...)
+		count -= n
 	}
 	return resp, nil
 }
