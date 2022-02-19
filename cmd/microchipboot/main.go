@@ -31,7 +31,7 @@ type pic8ProfileOptions struct {
 	Options microchipboot.PIC8Options
 }
 
-const appVersion = "0.2.1"
+const appVersion = "0.2.2"
 
 func main() {
 	version := flag.Bool("version", false, "Prints the program version.")
